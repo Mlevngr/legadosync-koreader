@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Lua syntax
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes luajit
+          luajit -b legadosync.koplugin/main.lua /tmp/main.luac
+          luajit -b legadosync.koplugin/webdav.lua /tmp/webdav.luac
+          luajit -b legadosync.koplugin/_meta.lua /tmp/meta.luac
+
+      - name: Build release assets
+        run: ./scripts/package.sh "${GITHUB_REF_NAME}" dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/legadosync-koreader-${{ github.ref_name }}.zip
+            dist/legadosync-koreader-${{ github.ref_name }}.zip.sha256
