@@ -27,11 +27,13 @@ local defaults = {
     address = "https://",
     username = "",
     password = "",
-    remote_books = "books",
-    remote_progress = "progress",
+    remote_books = "legado/books",
+    remote_progress = "legado/bookProgress",
     local_books = "/mnt/us/documents",
     auto_progress = true,
 }
+
+local MAX_OFFSET_WALK = 50000
 
 local function joinPath(left, right)
     if left == "" then return right end
@@ -269,100 +271,254 @@ function LegadoSync:syncBooks()
     end)
 end
 
-function LegadoSync:getProgressKey()
-    if not self.ui.document or not self.ui.doc_settings then return end
-    local digest = self.ui.doc_settings:readSetting("partial_md5_checksum")
-    if not digest and self.ui.document.file then
-        digest = util.partialMD5(self.ui.document.file)
-    end
-    return digest
+local function normalizeText(value)
+    return (value or ""):lower():gsub("%s+", ""):gsub("[%p%c]", "")
 end
 
-function LegadoSync:getCurrentProgress()
-    local progress, percentage
-    if self.ui.document.info.has_pages then
-        progress = self.ui.paging:getLastProgress()
-        percentage = self.ui.paging:getLastPercent()
-    else
-        progress = self.ui.rolling:getLastProgress()
-        percentage = self.ui.rolling:getLastPercent()
+local function utf16Length(value)
+    local length, index, bytes = 0, 1, #value
+    while index <= bytes do
+        local byte = value:byte(index)
+        if byte < 0x80 then
+            index = index + 1
+            length = length + 1
+        elseif byte < 0xE0 then
+            index = index + 2
+            length = length + 1
+        elseif byte < 0xF0 then
+            index = index + 3
+            length = length + 1
+        else
+            index = index + 4
+            length = length + 2
+        end
     end
+    return length
+end
+
+function LegadoSync:isLegadoProgressSupported()
+    return self.ui.document and not self.ui.document.info.has_pages
+        and self.ui.rolling and self.ui.toc
+end
+
+function LegadoSync:getBookIdentity()
+    local props = self.ui.doc_props or self.ui.document:getProps() or {}
+    local filename = ffiUtil.basename(self.ui.document.file):gsub("%.[^.]+$", "")
     return {
-        version = 1,
-        document = self:getProgressKey(),
-        filename = ffiUtil.basename(self.ui.document.file),
-        progress = progress,
-        percentage = percentage,
-        timestamp = os.time(),
+        name = props.title or props.display_title or filename,
+        author = props.authors or "",
+        filename = filename,
     }
+end
+
+function LegadoSync:loadToc()
+    self.ui.toc:fillToc()
+    return self.ui.toc.toc or {}
+end
+
+function LegadoSync:findTocIndex(progress, current_xp)
+    local toc = self:loadToc()
+    if current_xp then
+        return self.ui.toc:getTocIndexByPage(current_xp), toc
+    end
+    local wanted_title = normalizeText(progress.durChapterTitle)
+    local wanted_index = tonumber(progress.durChapterIndex) and progress.durChapterIndex + 1
+    local exact
+    for index, item in ipairs(toc) do
+        if wanted_title ~= "" and normalizeText(item.title) == wanted_title then
+            if exact then
+                exact = nil
+                break
+            end
+            exact = index
+        end
+    end
+    if exact then return exact, toc end
+    if wanted_index and toc[wanted_index] then
+        if wanted_title == "" or normalizeText(toc[wanted_index].title) == wanted_title then
+            return wanted_index, toc
+        end
+    end
+    return nil, toc
+end
+
+function LegadoSync:readJsonFile(path)
+    local file = io.open(path, "rb")
+    if not file then return end
+    local content = file:read("*a")
+    file:close()
+    local ok, data = pcall(json.decode, content)
+    return ok and data or nil
+end
+
+function LegadoSync:downloadProgressRecords(client)
+    local entries, err = client:list(self.config.remote_progress)
+    if not entries then
+        return nil, err
+    end
+    local records = {}
+    for _, entry in ipairs(entries) do
+        if not entry.is_dir and entry.name:lower():match("%.json$") then
+            local temp_path = DataStorage:getDataDir() .. "/legadosync-progress-" .. tostring(#records + 1) .. ".json"
+            local ok = client:download(joinPath(self.config.remote_progress, entry.name), temp_path)
+            if ok then
+                local record = self:readJsonFile(temp_path)
+                if type(record) == "table" and record.name then
+                    records[#records + 1] = { name = entry.name, data = record }
+                end
+            end
+            os.remove(temp_path)
+        end
+    end
+    return records
+end
+
+function LegadoSync:findProgressRecord(records)
+    local identity = self:getBookIdentity()
+    local title = normalizeText(identity.name)
+    local filename = normalizeText(identity.filename)
+    local author = normalizeText(identity.author)
+    local title_match
+    for _, record in ipairs(records) do
+        local remote_title = normalizeText(record.data.name)
+        if remote_title == title or remote_title ~= "" and filename:find(remote_title, 1, true) then
+            if author == "" or normalizeText(record.data.author) == author
+                    or filename:find(normalizeText(record.data.author), 1, true) then
+                return record
+            end
+            title_match = title_match or record
+        end
+    end
+    return title_match
+end
+
+function LegadoSync:getCurrentLegadoProgress(previous)
+    local xp = self.ui.rolling:getLastProgress()
+    local toc_index, toc = self:findTocIndex(nil, xp)
+    local chapter = toc_index and toc[toc_index]
+    if not chapter or not chapter.xpointer then return end
+    local text = self.ui.document:getTextFromXPointers(chapter.xpointer, xp) or ""
+    local identity = self:getBookIdentity()
+    local progress = previous or {}
+    progress.name = previous and previous.name or identity.name
+    progress.author = previous and previous.author or identity.author
+    progress.durChapterIndex = toc_index - 1
+    progress.durChapterPos = utf16Length(text)
+    progress.durChapterTime = os.time() * 1000
+    progress.durChapterTitle = chapter.title
+    progress.koreaderXPointer = xp
+    progress.koreaderPercentage = self.ui.rolling:getLastPercent()
+    progress.koreaderMappingVersion = 1
+    return progress
+end
+
+function LegadoSync:writeProgress(client, remote_name, progress)
+    local temp_path = DataStorage:getDataDir() .. "/legadosync-progress.json"
+    local file, err = io.open(temp_path, "wb")
+    if not file then return nil, err end
+    file:write(json.encode(progress))
+    file:close()
+    local ok, upload_err = client:upload(joinPath(self.config.remote_progress, remote_name), temp_path, "application/json")
+    os.remove(temp_path)
+    return ok, upload_err
 end
 
 function LegadoSync:pushProgress(interactive, immediate)
     if not self.config.auto_progress and not interactive then return end
-    local key = self:getProgressKey()
-    if not key then return end
-    local progress = self:getCurrentProgress()
+    if not self:isLegadoProgressSupported() then
+        if interactive then self:showMessage(_("Legado 进度互通目前仅支持 EPUB 等流式文档。")) end
+        return
+    end
+    local current_xp = self.ui.rolling:getLastProgress()
+    if not interactive and self.last_synced_xp == current_xp then return end
+    if not interactive and self.opened_xp == current_xp then return end
+    local snapshot = self:getCurrentLegadoProgress()
+    if not snapshot then
+        if interactive then self:showMessage(_("无法确定当前章节。")) end
+        return
+    end
     self:runOnline(function()
         local client = self:getClient()
         local ok, err = client:ensureDirectory(self.config.remote_progress)
         if not ok then error(_("无法创建远端进度目录：") .. tostring(err)) end
-        local temp_path = DataStorage:getDataDir() .. "/legadosync-progress.json"
-        local file, file_err = io.open(temp_path, "wb")
-        if not file then error(file_err) end
-        file:write(json.encode(progress))
-        file:close()
-        local success, upload_err = client:upload(joinPath(self.config.remote_progress, key .. ".json"), temp_path, "application/json")
-        os.remove(temp_path)
+        local records, list_err = self:downloadProgressRecords(client)
+        if not records then error(_("无法读取 Legado 进度：") .. tostring(list_err)) end
+        local record = self:findProgressRecord(records)
+        if not record then
+            error(_("未找到匹配的 Legado 进度。请先在手机上打开一次这本书。"))
+        end
+        local progress = record.data
+        for key, value in pairs(snapshot) do progress[key] = value end
+        progress.name = record.data.name
+        progress.author = record.data.author
+        local success, upload_err = self:writeProgress(client, record.name, progress)
         if not success then error(_("上传进度失败：") .. tostring(upload_err)) end
-        if interactive then Notification:notify(_("阅读进度已上传。")) end
+        self.last_synced_xp = current_xp
+        if interactive then Notification:notify(_("阅读进度已同步到 Legado。")) end
     end, not interactive, immediate)
 end
 
-function LegadoSync:applyProgress(remote)
-    if self.ui.document.info.has_pages then
-        self.ui:handleEvent(Event:new("GotoPage", tonumber(remote.progress)))
-    else
-        self.ui:handleEvent(Event:new("GotoXPointer", remote.progress))
+function LegadoSync:resolveProgressXPointer(remote)
+    if remote.koreaderXPointer and self.ui.document:isXPointerInDocument(remote.koreaderXPointer) then
+        return remote.koreaderXPointer, true
     end
+    local toc_index, toc = self:findTocIndex(remote)
+    local chapter = toc_index and toc[toc_index]
+    if not chapter or not chapter.xpointer then return end
+    local target = tonumber(remote.durChapterPos) or 0
+    if target <= 0 then return chapter.xpointer, false end
+    if target > MAX_OFFSET_WALK then
+        return chapter.xpointer, false
+    end
+    local xp, consumed = chapter.xpointer, 0
+    local next_boundary = toc[toc_index + 1] and toc[toc_index + 1].xpointer
+    while consumed < target do
+        local next_xp = self.ui.document:getNextVisibleChar(xp)
+        if not next_xp then break end
+        if next_boundary and self.ui.document:compareXPointers(next_xp, next_boundary) ~= 1 then break end
+        local character = self.ui.document:getTextFromXPointers(xp, next_xp) or ""
+        consumed = consumed + math.max(1, utf16Length(character))
+        xp = next_xp
+    end
+    return xp, false
 end
 
 function LegadoSync:pullProgress(interactive)
     if not self.config.auto_progress and not interactive then return end
-    local key = self:getProgressKey()
-    if not key then return end
+    if not self:isLegadoProgressSupported() then
+        if interactive then self:showMessage(_("Legado 进度互通目前仅支持 EPUB 等流式文档。")) end
+        return
+    end
     self:runOnline(function()
         local client = self:getClient()
-        local temp_path = DataStorage:getDataDir() .. "/legadosync-progress.json"
-        local success, err, code = client:download(joinPath(self.config.remote_progress, key .. ".json"), temp_path)
-        if not success then
-            if code == 404 then
-                if interactive then self:showMessage(_("远端没有这本书的阅读进度。")) end
-                return
-            end
-            error(_("下载进度失败：") .. tostring(err))
+        local directory_ok, directory_err = client:ensureDirectory(self.config.remote_progress)
+        if not directory_ok then error(_("无法创建远端进度目录：") .. tostring(directory_err)) end
+        local records, err = self:downloadProgressRecords(client)
+        if not records then error(_("无法读取 Legado 进度：") .. tostring(err)) end
+        local record = self:findProgressRecord(records)
+        if not record then
+            if interactive then self:showMessage(_("没有找到匹配的 Legado 阅读进度。")) end
+            return
         end
-        local file = io.open(temp_path, "rb")
-        local content = file and file:read("*a")
-        if file then file:close() end
-        os.remove(temp_path)
-        local ok, remote = pcall(json.decode, content or "")
-        if not ok or type(remote) ~= "table" or remote.document ~= key or remote.progress == nil then
-            error(_("远端进度文件无效。"))
-        end
-        local current = self:getCurrentProgress()
-        if remote.progress == current.progress then
+        local remote = record.data
+        local xp, exact = self:resolveProgressXPointer(remote)
+        if not xp then error(_("无法将 Legado 章节映射到当前 EPUB。")) end
+        local current_xp = self.ui.rolling:getLastProgress()
+        if xp == current_xp then
             if interactive then Notification:notify(_("阅读进度已经是最新的。")) end
             return
         end
         local apply = function()
-            self:applyProgress(remote)
-            Notification:notify(_("已应用远端阅读进度。"))
+            self.ui:handleEvent(Event:new("GotoXPointer", xp))
+            self.last_synced_xp = xp
+            self.opened_xp = xp
+            Notification:notify(exact and _("已精确应用 Legado 阅读进度。") or _("已按章节位置应用 Legado 阅读进度。"))
         end
         if interactive then
             apply()
         else
             UIManager:show(ConfirmBox:new{
-                text = string.format(_("发现远端阅读进度 %.1f%%，是否跳转？"), (remote.percentage or 0) * 100),
+                text = string.format(_("发现 Legado 进度：%s，是否跳转？"), remote.durChapterTitle or _("未知章节")),
                 ok_callback = apply,
             })
         end
@@ -376,6 +532,9 @@ function LegadoSync:onReaderReady()
     Dispatcher:registerAction("legadosync_push_progress", {
         category = "none", event = "LegadoSyncPushProgress", title = _("上传 WebDAV 阅读进度"), reader = true,
     })
+    if self:isLegadoProgressSupported() then
+        self.opened_xp = self.ui.rolling:getLastProgress()
+    end
     if self.config.auto_progress then
         UIManager:scheduleIn(1, function() self:pullProgress(false) end)
     end

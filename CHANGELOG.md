@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)；发布记录采用 [Keep a Changelog](https://keepachangelog.com/) 格式。
 
+## [1.1.0] - 2026-08-14
+
+### Added
+
+- 与 Legado `bookProgress` JSON 双向同步 EPUB 阅读进度。
+- 通过书名、作者、章节标题和 UTF-16 字符位置映射 Legado 与 KOReader。
+- 在 Legado JSON 中保存 KOReader XPointer，后续可精确恢复位置。
+
+### Changed
+
+- 新安装的默认远端目录改为 `legado/books` 和 `legado/bookProgress`。
+- 自动上传仅在 Kindle 阅读位置实际发生变化后执行，避免覆盖未接受的手机进度。
+
 ## [1.0.0] - 2026-08-14
 
 ### Added
@@ -13,4 +26,5 @@
 - 手动同步菜单与 KOReader Dispatcher 动作。
 - 可复现的 ZIP 发布包、SHA-256 校验文件和 GitHub Release 自动化。
 
+[1.1.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.0.0

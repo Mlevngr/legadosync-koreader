@@ -3,8 +3,8 @@
 一个运行在 Kindle/KOReader 上的 WebDAV 同步插件，用于：
 
 - 在 Kindle 本地书库与 WebDAV 之间双向同步书籍。
-- 按书籍内容哈希同步 KOReader 阅读位置。
-- 打开书籍时检查远端进度，关闭书籍或休眠时上传进度。
+- 按书名、作者和章节匹配 Legado（阅读）与 KOReader 的阅读位置。
+- 打开 EPUB 时检查 Legado 进度，关闭书籍或休眠时将新位置写回 Legado。
 - 从菜单或手势手动推送、拉取当前书籍进度。
 
 ## 安装
@@ -21,7 +21,7 @@ Kindle 上常见的本地书库目录是 `/mnt/us/documents`。WebDAV 地址应�
 https://dav.example.com/remote.php/dav/files/alice/KOReader
 ```
 
-插件会在该地址下自动创建配置的书籍目录和进度目录，默认分别为 `books` 和 `progress`。
+插件会在该地址下自动创建配置的书籍目录和进度目录。配合 Legado 默认 WebDAV 子目录时，两者应分别设为 `legado/books` 和 `legado/bookProgress`。
 
 ## 同步规则
 
@@ -29,13 +29,14 @@ https://dav.example.com/remote.php/dav/files/alice/KOReader
 - 两端都有同一路径的书籍时，修改时间较新的一端覆盖较旧的一端。
 - 插件不会传播删除操作，防止错误配置或临时空目录导致书库被清空。
 - 隐藏文件、`.sdr` 阅读元数据目录和 KOReader 不支持的文件不会作为书籍同步。
-- 阅读进度以书籍内容哈希匹配，因此改名或移动书籍后仍可匹配；内容不同的版本视为不同书籍。
+- 阅读进度按 EPUB 元数据中的书名、作者和 Legado JSON 匹配，再以章节标题和章节内字符位置转换。
 - 自动拉取发现不同进度时会询问是否跳转，手动拉取会直接应用。
 
 ## 限制
 
-- 阅读进度只适用于 KOReader，不读写 Kindle 原生阅读器的数据库或 Amazon 云端进度。
-- 当前同步阅读位置和百分比，不同步批注、书签、排版设置或统计数据。
+- 阅读进度可与 Legado 双向同步，但不读写 Kindle 原生阅读器数据库或 Amazon 云端进度。
+- Legado 与 KOReader 的文本清洗方式不同，首次从 Legado 定位可能有少量字符偏差；同步 JSON 中已有有效 KOReader XPointer 后可精确恢复。
+- 当前仅对 EPUB 等 KOReader 流式文档提供 Legado 进度互通，不同步批注、书签、排版设置或统计数据。
 - WebDAV 服务器需支持 `PROPFIND`、`GET`、`PUT` 和 `MKCOL`。
 - 账号密码与 KOReader 内置 WebDAV 插件一样，以明文形式保存在 Kindle 的 KOReader 设置目录中；建议使用专用账号或应用密码。
 
