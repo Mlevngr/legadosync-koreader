@@ -2,6 +2,27 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)；发布记录采用 [Keep a Changelog](https://keepachangelog.com/) 格式。
 
+## [1.2.0] - 2026-08-15
+
+### Added
+
+- 新增仅下载、仅上传和双向三种书籍同步方向，新安装及旧版迁移默认使用更安全的仅下载模式。
+- 新增 Kindle 本地目录选择器、WebDAV 连接测试、书籍同步状态基线和冲突计数。
+- 新增进度文件名缓存、ETag 条件写入、服务器条件写入能力探测，以及上传前复核和上传后校验。
+- 新增 Unicode、同名书匹配、同步决策和 WebDAV 响应解析的自动测试，并在分支、拉取请求和发布流程运行。
+
+### Changed
+
+- 进度匹配在书名相同但作者冲突时拒绝选择，KOReader XPointer 仅在同一 EPUB 指纹上复用。
+- WebDAV `PROPFIND` 仅接受 `207`，不再依赖响应项顺序，并保留服务端返回的 ETag 原值。
+- 双向书籍同步无法可靠判断新旧或检测到两端都变化时跳过冲突，不再把缺失时间视为旧文件。
+
+### Fixed
+
+- 本地 EPUB 替换先保留备份，避免重命名失败后丢失原文件。
+- 检查进度 JSON 编码、写入和关闭错误，避免上传截断文件。
+- 网络请求异常后恢复 KOReader socket 超时设置。
+
 ## [1.1.2] - 2026-08-14
 
 ### Fixed
@@ -40,6 +61,7 @@
 - 手动同步菜单与 KOReader Dispatcher 动作。
 - 可复现的 ZIP 发布包、SHA-256 校验文件和 GitHub Release 自动化。
 
+[1.2.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.2.0
 [1.1.2]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.2
 [1.1.1]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.1
 [1.1.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.0

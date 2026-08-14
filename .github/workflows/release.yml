@@ -23,6 +23,11 @@ jobs:
           luajit -b legadosync.koplugin/webdav.lua /tmp/webdav.luac
           luajit -b legadosync.koplugin/_meta.lua /tmp/meta.luac
 
+      - name: Run unit tests
+        run: |
+          luajit tests/test_syncutil.lua
+          luajit tests/test_webdav.lua
+
       - name: Build release assets
         run: ./scripts/package.sh "${GITHUB_REF_NAME}" dist
 
