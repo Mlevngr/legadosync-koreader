@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)；发布记录采用 [Keep a Changelog](https://keepachangelog.com/) 格式。
 
+## [1.1.1] - 2026-08-14
+
+### Fixed
+
+- Legado 章节标题在替换 EPUB 后不存在时，回退到其零基章节索引，避免无法映射。
+- 默认 Kindle 书籍同步目录改为 `/mnt/us/books`，并明确该设置不影响进度同步或 KOReader 文件浏览器目录。
+
 ## [1.1.0] - 2026-08-14
 
 ### Added
@@ -26,5 +33,6 @@
 - 手动同步菜单与 KOReader Dispatcher 动作。
 - 可复现的 ZIP 发布包、SHA-256 校验文件和 GitHub Release 自动化。
 
+[1.1.1]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.1
 [1.1.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.0.0

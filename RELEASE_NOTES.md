@@ -1,6 +1,6 @@
-# LegadoSync for KOReader v1.1.0
+# LegadoSync for KOReader v1.1.1
 
-此版本增加 Legado（阅读）与 KOReader 的 EPUB 阅读进度双向互通。
+此修复版本增强替换 EPUB 后的 Legado 章节映射，并澄清本地目录设置。
 
 ## 功能
 
@@ -14,11 +14,11 @@
 
 ## 安装
 
-1. 下载 `legadosync-koreader-v1.1.0.zip` 和对应的 `.sha256` 文件。
+1. 下载 `legadosync-koreader-v1.1.1.zip` 和对应的 `.sha256` 文件。
 2. 校验 ZIP 后解压。
 3. 将 `legadosync.koplugin` 复制到 Kindle 的 `koreader/plugins/`。
 4. 重启 KOReader，并在“WebDAV 同步 -> 连接设置”中完成配置。
 
 ## 注意
 
-首次在两个阅读器之间转换时，因文本清洗差异可能有少量字符偏差。进度互通目前支持 EPUB 等流式文档，不支持 PDF，也不会读写 Kindle 原生阅读器或 Amazon 云端进度。
+“Kindle 本地书籍目录”只用于手动同步书籍文件，不控制关闭书籍后的进度同步，也不改变 KOReader 文件浏览器返回的目录。

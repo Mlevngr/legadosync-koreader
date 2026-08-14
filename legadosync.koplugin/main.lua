@@ -29,7 +29,7 @@ local defaults = {
     password = "",
     remote_books = "legado/books",
     remote_progress = "legado/bookProgress",
-    local_books = "/mnt/us/documents",
+    local_books = "/mnt/us/books",
     auto_progress = true,
 }
 
@@ -116,7 +116,7 @@ function LegadoSync:configure(menu)
             { text = self.config.password, hint = _("密码"), text_type = "password" },
             { text = self.config.remote_books, hint = _("远端书籍目录") },
             { text = self.config.remote_progress, hint = _("远端进度目录") },
-            { text = self.config.local_books, hint = _("Kindle 本地书籍目录") },
+            { text = self.config.local_books, hint = _("书籍文件同步目录，例如 /mnt/us/books") },
         },
         buttons = {{
             { text = _("取消"), id = "close", callback = function() UIManager:close(dialog) end },
@@ -133,6 +133,7 @@ function LegadoSync:configure(menu)
                     self.updated = true
                     self:onFlushSettings()
                     UIManager:close(dialog)
+                    Notification:notify(_("同步设置已保存。本地目录仅用于“立即同步书籍”。"))
                     if menu then menu:updateItems() end
                 end,
             },
@@ -335,9 +336,7 @@ function LegadoSync:findTocIndex(progress, current_xp)
     end
     if exact then return exact, toc end
     if wanted_index and toc[wanted_index] then
-        if wanted_title == "" or normalizeText(toc[wanted_index].title) == wanted_title then
-            return wanted_index, toc
-        end
+        return wanted_index, toc
     end
     return nil, toc
 end

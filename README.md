@@ -15,7 +15,7 @@
 4. 重启 KOReader，在“工具 -> 插件管理 -> 用户插件”中确认插件已启用。
 5. 打开“WebDAV 同步 -> 连接设置”，填写 WebDAV 地址、账号、远端目录和 Kindle 本地书库目录。
 
-Kindle 上常见的本地书库目录是 `/mnt/us/documents`。WebDAV 地址应指向一个已经存在且账号可写的根目录，例如：
+本插件默认使用 `/mnt/us/books` 作为 Kindle 本地书籍同步目录。该设置仅决定“立即同步书籍”的文件位置，不改变 KOReader 文件浏览器的当前目录。WebDAV 地址应指向一个已经存在且账号可写的根目录，例如：
 
 ```text
 https://dav.example.com/remote.php/dav/files/alice/KOReader
