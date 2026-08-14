@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)；发布记录采用 [Keep a Changelog](https://keepachangelog.com/) 格式。
 
+## [1.1.2] - 2026-08-14
+
+### Fixed
+
+- 书籍同步仅接受 EPUB，防止误选 `/mnt/us/documents` 时上传 Kindle 脚本、日志、字典和其他非书文件。
+- 将已接受的 Legado 进度时间戳保存到书籍 `.sdr`，避免 Kindle 休眠唤醒后反复询问同一进度。
+
 ## [1.1.1] - 2026-08-14
 
 ### Fixed
@@ -33,6 +40,7 @@
 - 手动同步菜单与 KOReader Dispatcher 动作。
 - 可复现的 ZIP 发布包、SHA-256 校验文件和 GitHub Release 自动化。
 
+[1.1.2]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.2
 [1.1.1]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.1
 [1.1.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Mlevngr/legadosync-koreader/releases/tag/v1.0.0

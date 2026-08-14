@@ -1,7 +1,6 @@
 local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
 local Dispatcher = require("dispatcher")
-local DocumentRegistry = require("document/documentregistry")
 local Event = require("ui/event")
 local InfoMessage = require("ui/widget/infomessage")
 local LuaSettings = require("luasettings")
@@ -34,11 +33,16 @@ local defaults = {
 }
 
 local MAX_OFFSET_WALK = 50000
+local APPLIED_TIMESTAMP_SETTING = "legadosync_applied_timestamp"
 
 local function joinPath(left, right)
     if left == "" then return right end
     if right == "" then return left end
     return left:gsub("/+$", "") .. "/" .. right:gsub("^/+", "")
+end
+
+local function isBookFile(filename)
+    return filename:lower():match("%.epub$") ~= nil
 end
 
 local function copyDefaults(settings)
@@ -192,7 +196,7 @@ function LegadoSync:scanLocal(root, relative, result)
             if attr and attr.mode == "directory" then
                 local scanned, err = self:scanLocal(root, rel_path, result)
                 if not scanned then return nil, err end
-            elseif attr and attr.mode == "file" and DocumentRegistry:hasProvider(full_path) then
+            elseif attr and attr.mode == "file" and isBookFile(name) then
                 result[rel_path] = { path = full_path, size = attr.size, modification = attr.modification }
             end
         end
@@ -209,7 +213,7 @@ function LegadoSync:scanRemote(client, root, relative, result)
             if entry.is_dir then
                 local scanned, scan_err = self:scanRemote(client, root, rel_path, result)
                 if not scanned then return nil, scan_err end
-            elseif DocumentRegistry:hasProvider(entry.name) then
+            elseif isBookFile(entry.name) then
                 result[rel_path] = entry
             end
         end
@@ -453,6 +457,8 @@ function LegadoSync:pushProgress(interactive, immediate)
         local success, upload_err = self:writeProgress(client, record.name, progress)
         if not success then error(_("上传进度失败：") .. tostring(upload_err)) end
         self.last_synced_xp = current_xp
+        self.ui.doc_settings:saveSetting(APPLIED_TIMESTAMP_SETTING, progress.durChapterTime)
+        self.ui.doc_settings:flush()
         if interactive then Notification:notify(_("阅读进度已同步到 Legado。")) end
     end, not interactive, immediate)
 end
@@ -500,6 +506,12 @@ function LegadoSync:pullProgress(interactive)
             return
         end
         local remote = record.data
+        local applied_timestamp = self.ui.doc_settings:readSetting(APPLIED_TIMESTAMP_SETTING)
+        if applied_timestamp == remote.durChapterTime then
+            self.last_synced_xp = self.ui.rolling:getLastProgress()
+            if interactive then Notification:notify(_("该 Legado 进度已处理。")) end
+            return
+        end
         local xp, exact = self:resolveProgressXPointer(remote)
         if not xp then error(_("无法将 Legado 章节映射到当前 EPUB。")) end
         local current_xp = self.ui.rolling:getLastProgress()
@@ -511,6 +523,8 @@ function LegadoSync:pullProgress(interactive)
             self.ui:handleEvent(Event:new("GotoXPointer", xp))
             self.last_synced_xp = xp
             self.opened_xp = xp
+            self.ui.doc_settings:saveSetting(APPLIED_TIMESTAMP_SETTING, remote.durChapterTime)
+            self.ui.doc_settings:flush()
             Notification:notify(exact and _("已精确应用 Legado 阅读进度。") or _("已按章节位置应用 Legado 阅读进度。"))
         end
         if interactive then
